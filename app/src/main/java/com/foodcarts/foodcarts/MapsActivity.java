@@ -1,19 +1,26 @@
 package com.foodcarts.foodcarts;
 
+import android.os.AsyncTask;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
+import android.util.Log;
 
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+
+import java.io.IOException;
 
 public class MapsActivity extends FragmentActivity {
 
     private GoogleMap mMap; // Might be null if Google Play services APK is not available.
-    private double DEFAULT_LAT = 37.776775;
-    private double DEFAULT_LNG = -122.416791;
+    private final double DEFAULT_LAT = 37.776775;
+    private final double DEFAULT_LNG = -122.416791;
+    private final String FOODCARTS_URL = "http://vast-castle-9076.herokuapp.com/api/v1.0/nearest_foodcarts";
+    private static final String TAG = "MapsActivity";
 
 
     @Override
@@ -27,6 +34,37 @@ public class MapsActivity extends FragmentActivity {
     protected void onResume() {
         super.onResume();
         setUpMapIfNeeded();
+    }
+
+    private class FetchFoodcartsTask extends AsyncTask<String, Void, String>
+    {
+        @Override
+        protected String doInBackground(String... params) {
+            String result = "[]";
+
+            try {
+                Log.i(TAG, "content of url:" + result);
+                result = new FoodcartsFetcher().getUrl(params[0]);
+                Log.i(TAG, "content of url:" + result);
+            } catch(IOException ioe) {
+                Log.e(TAG, "failed:" + ioe);
+            }
+            return result;
+        }
+    }
+
+
+    private Void addUserPinToMap(double lat, double lng) {
+        LatLng latLng = new LatLng(DEFAULT_LAT, DEFAULT_LNG);
+        mMap.addMarker(new MarkerOptions().position(latLng).title("User Marker").icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
+        // I think zoom >=14 crashes my emulator.
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 13));
+
+        return null;
+    }
+
+    private String getFoodcartsEndpoint(double lat, double lng) {
+      return FOODCARTS_URL + "?user_lat=" + String.valueOf(lat) + "&user_long=" + String.valueOf(lng);
     }
 
     /**
@@ -57,6 +95,8 @@ public class MapsActivity extends FragmentActivity {
         }
     }
 
+
+
     /**
      * This is where we can add markers or lines, add listeners or move the camera. In this case, we
      * just add a marker near Africa.
@@ -64,9 +104,11 @@ public class MapsActivity extends FragmentActivity {
      * This should only be called once and when we are sure that {@link #mMap} is not null.
      */
     private void setUpMap() {
-        LatLng latLng = new LatLng(DEFAULT_LAT, DEFAULT_LNG);
 
-        mMap.addMarker(new MarkerOptions().position(latLng).title("User Marker"));
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 13));
+        // add user pin to map
+        addUserPinToMap(DEFAULT_LAT, DEFAULT_LNG);
+
+        // fetch foodcarts
+        new FetchFoodcartsTask().execute(getFoodcartsEndpoint(DEFAULT_LAT, DEFAULT_LNG));
     }
 }
