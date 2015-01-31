@@ -3,7 +3,6 @@ package com.foodcarts.foodcarts;
 import android.os.AsyncTask;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
-import android.util.Log;
 
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
@@ -11,16 +10,23 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.GoogleMap.OnMapClickListener;
+import com.google.android.gms.maps.GoogleMap.InfoWindowAdapter;
 
-import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MapsActivity extends FragmentActivity {
 
     private GoogleMap mMap; // Might be null if Google Play services APK is not available.
+
+    private static final String TAG = "MapsActivity";
+    ArrayList<Foodcart> mFoodcarts;
+
     private final double DEFAULT_LAT = 37.776775;
     private final double DEFAULT_LNG = -122.416791;
-    private final String FOODCARTS_URL = "http://vast-castle-9076.herokuapp.com/api/v1.0/nearest_foodcarts";
-    private static final String TAG = "MapsActivity";
+    private final int DEFAULT_ZOOM = 13;
 
 
     @Override
@@ -36,35 +42,65 @@ public class MapsActivity extends FragmentActivity {
         setUpMapIfNeeded();
     }
 
-    private class FetchFoodcartsTask extends AsyncTask<String, Void, String>
-    {
-        @Override
-        protected String doInBackground(String... params) {
-            String result = "[]";
-
-            try {
-                Log.i(TAG, "content of url:" + result);
-                result = new FoodcartsFetcher().getUrl(params[0]);
-                Log.i(TAG, "content of url:" + result);
-            } catch(IOException ioe) {
-                Log.e(TAG, "failed:" + ioe);
-            }
-            return result;
-        }
-    }
-
-
     private Void addUserPinToMap(double lat, double lng) {
-        LatLng latLng = new LatLng(DEFAULT_LAT, DEFAULT_LNG);
+        LatLng latLng = new LatLng(lat, lng);
         mMap.addMarker(new MarkerOptions().position(latLng).title("User Marker").icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
         // I think zoom >=14 crashes my emulator.
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 13));
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM));
 
         return null;
     }
 
-    private String getFoodcartsEndpoint(double lat, double lng) {
-      return FOODCARTS_URL + "?user_lat=" + String.valueOf(lat) + "&user_long=" + String.valueOf(lng);
+    private Void addFoodcartMarkerToMap(double lat, double lng, Map<String, String> info) {
+        LatLng latLng = new LatLng(lat, lng);
+        mMap.addMarker(new MarkerOptions()
+                .position(latLng)
+                .title("User Marker")
+                .title(info.get("applicant"))
+                .snippet(info.get("address") + info.get("fooditems")));
+
+        // I think zoom >=14 crashes my emulator.
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, DEFAULT_ZOOM));
+
+        return null;
+    }
+
+    void setupFoodcartMarkers() {
+        for (int i = 0; i < mFoodcarts.size(); i++) {
+
+            Map<String, String> info = new HashMap<String, String>();
+            info.put("address", mFoodcarts.get(i).getmAddress());
+            info.put("applicant", mFoodcarts.get(i).getmApplicant());
+            info.put("fooditems", mFoodcarts.get(i).getmFooditems());
+
+            addFoodcartMarkerToMap(Double.parseDouble(mFoodcarts.get(i).getmLatitude()), Double.parseDouble(mFoodcarts.get(i).getmLongitude()), info);
+        }
+    }
+
+    private void addMarkersToMap(double lat, double lng) {
+        // add user pin to map
+        addUserPinToMap(lat, lng);
+
+        // add foodcart markers
+        Map<String, Double> latlng = new HashMap<String, Double>();
+        latlng.put("lat", lat);
+        latlng.put("lng", lng);
+        new FetchFoodcartsTask().execute(latlng);
+    }
+
+    private class FetchFoodcartsTask extends AsyncTask<Map<String, Double>, Void, ArrayList<Foodcart>> {
+        @Override
+        protected ArrayList<Foodcart> doInBackground(Map<String, Double>... params) {
+            Double lat = params[0].get("lat");
+            Double lng = params[0].get("lng");
+            return new FoodcartsFetcher().fetchFoodcarts(lat.doubleValue(), lng.doubleValue());
+        }
+
+        @Override
+        protected void onPostExecute(ArrayList<Foodcart> foodcarts) {
+            mFoodcarts = foodcarts;
+            setupFoodcartMarkers();
+        }
     }
 
     /**
@@ -95,8 +131,6 @@ public class MapsActivity extends FragmentActivity {
         }
     }
 
-
-
     /**
      * This is where we can add markers or lines, add listeners or move the camera. In this case, we
      * just add a marker near Africa.
@@ -105,10 +139,17 @@ public class MapsActivity extends FragmentActivity {
      */
     private void setUpMap() {
 
-        // add user pin to map
-        addUserPinToMap(DEFAULT_LAT, DEFAULT_LNG);
+        addMarkersToMap(DEFAULT_LAT, DEFAULT_LNG);
 
-        // fetch foodcarts
-        new FetchFoodcartsTask().execute(getFoodcartsEndpoint(DEFAULT_LAT, DEFAULT_LNG));
+        mMap.setOnMapClickListener(new OnMapClickListener() {
+            @Override
+            public void onMapClick(LatLng newLatLng) {
+                mMap.clear();
+                addMarkersToMap(newLatLng.latitude, newLatLng.longitude);
+            }
+
+        });
+
+
     }
 }
